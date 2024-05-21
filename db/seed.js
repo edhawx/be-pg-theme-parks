@@ -23,38 +23,36 @@ function seed({ parks, rides, stalls}) {
       return createRides();
     })
     .then(() => {
-
-      // const rideArr = [...nestedArrOfValues, ride_name, ride_year_opened, votes]
-
-        const park = [];
-        for (let i = 0; i < parks.length; i++) {
-          for (let j = 0; j < rides.length; j++) {
-            if (rides[j].park_name === parks[i].park_name) {
-              park.push({ ...parks[i], ...rides[j] });
-            }
-          }
-        }
-      const nestedArrOfValues = park.map((park) => {
-        return [park.park_name, park.year_opened, park.annual_attendance,
-          park.ride_name, park.votes
-        ];
-      })
-      console.log(nestedArrOfValues)
-
-      const itemInsertString = format(`INSERT INTO parks
-      ( park_name, year_opened, annual_attendance, ride_name, votes )
+    const formattedParks = parks.map((park)=>{
+      return ([park.park_name, park.year_opened, park.annual_attendance])
+    })
+    const insertParksQueryString = format(
+      `INSERT INTO parks (park_name, year_opened, annual_attendance)
       VALUES %L
       RETURNING *;`,
-      nestedArrOfValues
+      formattedParks
     );
-
-    // JOIN parks ON parks.park_id = rides.park_id
-
-    return db.query(itemInsertString).then((result)=>{
-      console.log(result.rows);
+    return db.query(insertParksQueryString)
     })
+    .then(result => {
+      const insertedParks = result.rows;
+      const modifiedRides = modifyRides(rides, insertedParks);
+      const formattedRides = modifiedRides.map(ride => [
+        ride.park_id,
+        ride.ride_name,
+        ride.year_opened,
+        ride.votes
+      ]);
+
+      const insertRidesQueryString = format(
+        `INSERT INTO rides (park_id, ride_name, year_opened, votes)
+        VALUES %L
+        RETURNING *;`,
+        formattedRides
+      );
+      return db.query(insertRidesQueryString)
     });
-}
+};
 
 
 function createParks() {
@@ -63,9 +61,7 @@ function createParks() {
     park_id SERIAL PRIMARY KEY,
     park_name VARCHAR(300) NOT null,
     year_opened INT NOT null,
-    annual_attendance INT NOT NULL,
-    ride_name VARCHAR(300) NOT NULL,
-    votes INT NOT NULL);`)
+    annual_attendance INT NOT NULL);`)
 };
 
 function createRides() {
@@ -78,6 +74,22 @@ function createRides() {
     votes INT NOT NULL);`)
 };
 
+function modifyRides(rides, parks){
+  const parkMap = parks.reduce((acc, park)=>{
+    acc[park.park_name] = park.park_id;
+    return acc;
+  }, {});
+
+  const modifiedRides = rides.map(ride =>{
+    return {
+      ride_name: ride.ride_name,
+      year_opened: ride.year_opened,
+      park_id: parkMap[ride.park_name],
+      votes: ride.votes
+    }
+  });
+  return modifiedRides;
+}
 
 
 
